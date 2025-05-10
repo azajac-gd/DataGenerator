@@ -7,4 +7,4 @@ class DDLService:
             return file.read()
 
     def create_prompt(self, ddl: str) -> str:
-        return f"""Given the following DDL schema:\n{ddl}\n\nGenerate a sample dataset with 10 rows as a pandas DataFrame (Python code only)."""
+        return f"""Generate 10 rows of sample data for the following table structure:\n{ddl}\n\nReturn only the rows in raw CSV format (without headers, code, or explanations). Do not include any introductory or trailing text. Use commas to separate values."""

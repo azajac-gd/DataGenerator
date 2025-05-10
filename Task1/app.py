@@ -4,6 +4,8 @@ from services.ddl_service import DDLService
 from utils.execution import exec_generated_code
 import os
 from dotenv import load_dotenv
+import io
+import pandas as pd
 
 load_dotenv()
 
@@ -24,11 +26,11 @@ if st.button("Generate Sample Data"):
         openai_service = OpenAIService(api_key)
         generated_code = openai_service.generate_code(prompt)
 
-        st.markdown("### 🧠 GPT-Generated Code")
+        st.markdown("### Generated Text")
         st.code(generated_code, language='python')
 
         try:
-            df = exec_generated_code(generated_code)
+            df = pd.read_csv(io.StringIO(generated_code), header=None, names=["id", "name", "email", "country"])
             st.markdown("### Data Preview")
             st.dataframe(df)
         except Exception as e:
