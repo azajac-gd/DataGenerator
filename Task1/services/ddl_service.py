@@ -12,6 +12,6 @@ class DDLService:
 Instructions:
 {user_instructions}
 Return only the rows in raw CSV format.
-No column headers, no explanation, no code block.
+WITH column headers, no explanation, no code block.
 Only CSV rows with comma-separated values."""
         return prompt
