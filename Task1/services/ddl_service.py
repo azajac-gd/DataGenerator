@@ -4,7 +4,14 @@ class DDLService:
 
     def get_schema(self) -> str:
         with open(self.ddl_path, 'r') as file:
-            return file.read()
+            return file.read().strip()
 
-    def create_prompt(self, ddl: str) -> str:
-        return f"""Generate 10 rows of sample data for the following table structure:\n{ddl}\n\nReturn only the rows in raw CSV format (without headers, code, or explanations). Do not include any introductory or trailing text. Use commas to separate values."""
+    def create_prompt(self, ddl: str, user_instructions: str = "") -> str:
+        prompt = f"""Generate sample data for the following DDL schema:
+{ddl}
+Instructions:
+{user_instructions}
+Return only the rows in raw CSV format.
+No column headers, no explanation, no code block.
+Only CSV rows with comma-separated values."""
+        return prompt
