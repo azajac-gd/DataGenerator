@@ -1,54 +1,103 @@
 import streamlit as st
-from services.openai_service import OpenAIService
-from services.ddl_service import DDLService
 import os
-from dotenv import load_dotenv
-import io
 import pandas as pd
+import io
+from dotenv import load_dotenv
+from services.ddl_service import DDLService
+from services.openai_service import OpenAIService
 
-load_dotenv()
 
-st.set_page_config(page_title="DataFrame Generator from DDL", layout="centered")
-st.title("Sample Data Generator")
+def initialize_session():
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+    if "tables_data" not in st.session_state:
+        st.session_state.tables_data = {}
 
-ddl_service = DDLService("ddl/tables.sql")
-ddl = ddl_service.get_schema()
 
-st.markdown("### DDL Schema")
-st.code(ddl, language="sql")
+def load_services():
+    ddl_service = DDLService("ddl/tables.sql")
+    api_key = os.getenv("OPENAI_API_KEY")
+    openai_service = OpenAIService(api_key)
+    return ddl_service, openai_service
 
-user_instructions = st.text_area("Additional instructions", placeholder="e.g. Generate 20 records...")
 
-if st.button("Generate Sample Data"):
-    with st.spinner("Communicating with GPT..."):
-        prompt = ddl_service.create_prompt(ddl, user_instructions)
+def render_chat_history():
+    for msg in st.session_state.chat_history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
-        api_key = os.getenv("OPENAI_API_KEY")
-        openai_service = OpenAIService(api_key)
-        generated_code = openai_service.generate_code(prompt)
 
-        tables_data = {}
-        current_table = None
-        current_lines = []
+def handle_user_input(user_input, ddl_service, openai_service):
+    if not user_input:
+        return
 
-        lines = generated_code.strip().splitlines()
+    st.session_state.chat_history.append({"role": "user", "content": user_input})
 
-        for line in lines:
-            if line.strip().startswith("-- TABLE:"):
-                if current_table and current_lines:
-                    tables_data[current_table] = "\n".join(current_lines)
-                current_table = line.split(":", 1)[1].strip()
-                current_lines = []
-            elif current_table:
-                current_lines.append(line.strip())
+    system_prompt = openai_service.build_system_prompt(ddl_service.get_schema())
+    messages = [{"role": "system", "content": system_prompt}] + st.session_state.chat_history
 
-        if current_table and current_lines:
-            tables_data[current_table] = "\n".join(current_lines)
+    with st.chat_message("assistant"):
+        with st.spinner("Generating data..."):
+            response = openai_service.generate_code(messages)
+            st.session_state.chat_history.append({"role": "assistant", "content": response})
+            process_generated_data(response)
 
-        for table_name, csv_data in tables_data.items():
-            try:
-                df = pd.read_csv(io.StringIO(csv_data))
-                st.markdown(f"### Table: {table_name}")
-                st.dataframe(df, hide_index=True)
-            except Exception as e:
-                st.error(f"Error reading data for table '{table_name}': {e}")
+
+def process_generated_data(response):
+    current_table = None
+    current_lines = []
+
+    for line in response.strip().splitlines():
+        if line.startswith("-- TABLE:"):
+            if current_table and current_lines:
+                save_table(current_table, current_lines)
+            current_table = line.split(":")[1].strip() #name of the table
+            current_lines = []
+        elif current_table:
+            current_lines.append(line.strip())
+
+    if current_table and current_lines:
+        save_table(current_table, current_lines)
+
+
+def save_table(table_name, lines):
+    csv_data = "\n".join(lines)
+    try:
+        df = pd.read_csv(io.StringIO(csv_data))
+        st.session_state.tables_data[table_name] = df
+    except Exception as e:
+        st.error(f"Failed to parse table `{table_name}`: {e}")
+
+
+def render_tables():
+    if not st.session_state.tables_data:
+        st.info("No data yet. Start by sending an instruction.")
+        return
+    for name, df in st.session_state.tables_data.items():
+        st.markdown(f"### Table: `{name}`")
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+
+def main():
+    load_dotenv()
+    st.set_page_config(page_title="Chat Data Generator", layout="wide")
+
+    initialize_session()
+    ddl_service, openai_service = load_services()
+
+    left_col, right_col = st.columns([1, 1])
+
+    with left_col:
+        st.markdown("## Chat")
+        render_chat_history()
+        user_input = st.chat_input("Enter an instruction...")
+        handle_user_input(user_input, ddl_service, openai_service)
+
+    with right_col:
+        st.markdown("## DataFrames")
+        render_tables()
+
+
+
+if __name__ == "__main__":
+    main()
